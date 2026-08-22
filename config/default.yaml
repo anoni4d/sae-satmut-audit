@@ -1,0 +1,102 @@
+# Project 2 — Causal vs Correlational Features. Single source of truth for the pipeline.
+# Override any key on the CLI: e.g. `python scripts/03_train_sae.py sae.k=32 smoke=true`
+
+seed: 0
+device: cuda            # falls back to cpu automatically if unavailable
+dtype: float32
+
+paths:
+  data_raw: data/raw
+  data_cache: data/cache
+  artifacts: artifacts
+  reports: reports
+
+# ---------------------------------------------------------------------------
+# Model. primary = HyenaDNA (single-nt). `toy` = deterministic local stand-in
+# used when weights cannot be fetched / for tests; identical downstream code path.
+# ---------------------------------------------------------------------------
+model:
+  name: LongSafari/hyenadna-tiny-1k-seqlen-hf   # set to "toy" to force the local model
+  fallback_to_toy: true        # if HF load fails, fall back to the toy model
+  max_length: 1024
+  # toy-model-only knobs (ignored for HyenaDNA):
+  toy_d_model: 128
+  toy_n_layers: 4
+
+# ---------------------------------------------------------------------------
+# Corpus (SAE training data). For the full run point genome_fasta at GRCh38 and
+# the BED files at ENCODE cCRE / GENCODE; for smoke a synthetic genome is built.
+# ---------------------------------------------------------------------------
+corpus:
+  context_len: 1024
+  n_windows: 4000          # full run: scale to reach >=~1e8 tokens
+  class_mix:               # fractions, must sum to ~1
+    ccre: 0.4
+    genic: 0.3
+    background: 0.3
+  genome_fasta: null       # e.g. data/raw/GRCh38.fa ; null -> synthetic genome
+  ccre_bed: null
+  gencode_gtf: null
+  synthetic_gc: 0.41       # GC content for synthetic background
+
+# ---------------------------------------------------------------------------
+# Activation extraction
+# ---------------------------------------------------------------------------
+activations:
+  layers: null             # null -> auto sweep {N/4, N/2, 3N/4}; or list e.g. [1,2]
+  batch_size: 16
+  chosen_layer: null       # set after Checkpoint 2
+
+# ---------------------------------------------------------------------------
+# TopK SAE
+# ---------------------------------------------------------------------------
+sae:
+  expansion: 16            # m = expansion * d_model ; sweep {8,16,32}
+  k: 32                    # sweep {16,32,64}
+  k_aux: 256
+  aux_alpha: 0.03125       # ~1/32
+  lr: 0.0004
+  batch: 4096
+  epochs: 1
+  dead_token_window: 10000000   # tokens with no firing -> dead (scaled down in smoke)
+  density_warn: 0.10            # flag features firing on >10% of tokens
+
+# ---------------------------------------------------------------------------
+# ISM / causal test
+# ---------------------------------------------------------------------------
+ism:
+  alts: all                # "all" 3 alts, or "mean" only
+  summary: max             # feature seq-summary: "max" over positions or "token"
+  batch: 64
+
+causal:
+  metric: precision_weighted  # a_f(e) def: precision_weighted (ADOPTED+PRE-REGISTERED 2026-06-07)
+                              # | spearman_all (orig baseline) | spearman_active
+  null_R: 1000             # random unit directions for the null
+  percentile: 95           # causal threshold percentile of the null
+  min_active_elements: 1   # require feature active on >= this many satmut elements
+  match_cos_threshold: 0.5 # min decoder cosine to call a feature "matched" across seeds
+
+# ---------------------------------------------------------------------------
+# satmut validation (Kircher 2019). null source -> synthetic elements with known
+# ground-truth causal structure (for pipeline validation / smoke).
+# ---------------------------------------------------------------------------
+satmut:
+  source: synthetic        # "synthetic" or "kircher"
+  kircher_dir: data/raw/kircher2019
+  n_synthetic: 20
+  element_len: 230
+  effect_reduce: mean      # E[p] = mean over 3 alts of |log2FC| ; also store signed/max
+
+# ---------------------------------------------------------------------------
+# Smoke mode: tiny everything, identical code path. Toggled by `smoke=true`.
+# ---------------------------------------------------------------------------
+smoke: false
+smoke_overrides:
+  model: { name: toy, max_length: 256, toy_d_model: 64, toy_n_layers: 4 }
+  corpus: { context_len: 256, n_windows: 300 }
+  activations: { batch_size: 16 }
+  sae: { expansion: 8, k: 16, batch: 512, epochs: 3, dead_token_window: 50000, k_aux: 64 }
+  ism: { batch: 64 }
+  causal: { null_R: 200 }
+  satmut: { n_synthetic: 12, element_len: 120 }

@@ -1,0 +1,79 @@
+# REAL run config (HyenaDNA + GRCh38 corpus + Kircher 2019 satmut).
+# Use via:  DNA_INTERP_CONFIG=config/real.yaml python scripts/run_pipeline.py n_seeds=3
+# Inherits the same schema as config/default.yaml; only real-data/model values differ.
+
+seed: 0
+device: cuda
+dtype: float32
+
+paths:
+  # heavy I/O (genome random-access + multi-GB activation memmaps) lives on the native WSL
+  # disk; /mnt/c (9p) is far too slow for this. Reports stay in the repo (small).
+  data_raw: ./data_raw
+  data_cache: ./cache
+  artifacts: ./artifacts_real
+  reports: reports_real
+
+model:
+  name: LongSafari/hyenadna-medium-160k-seqlen-hf   # d_model 256, 8 layers, single-nt
+  fallback_to_toy: false
+  max_length: 1024
+  toy_d_model: 128
+  toy_n_layers: 4
+
+corpus:
+  context_len: 1024
+  n_windows: 15000           # ~1.5e7 activation vectors (scale up for the full 1e8 run)
+  class_mix:
+    ccre: 0.4
+    genic: 0.3
+    background: 0.3
+  genome_fasta: ./data_raw/hg38.fa
+  ccre_bed: ./data_raw/GRCh38-cCREs.bed
+  gencode_gtf: ./data_raw/gencode_genes.bed
+  synthetic_gc: 0.41
+
+activations:
+  layers: null               # auto sweep {N/4, N/2, 3N/4}
+  batch_size: 32
+  chosen_layer: null
+
+sae:
+  expansion: 16
+  k: 64                       # k=32 gave FVU~0.16 (misses gate); k=64 -> FVU~0.098 PASS (SPEC sweep grid)
+  k_aux: 256
+  aux_alpha: 0.03125
+  lr: 0.0004
+  batch: 4096
+  epochs: 8                  # fast now that data is RAM-resident; enough passes to converge FVU
+  ram_max_tokens: 5000000    # subset of the 15M-token memmap held in RAM (5M x 256 f32 ~= 5.1 GB)
+  dead_token_window: 10000000
+  density_warn: 0.10
+
+ism:
+  alts: all
+  summary: max
+  batch: 64
+
+causal:
+  metric: precision_weighted   # pre-registered (PLAN §5b PR-1)
+  null_R: 1000
+  percentile: 95
+  min_active_elements: 1
+  match_cos_threshold: 0.5
+
+satmut:
+  source: kircher
+  kircher_dir: ./data_raw/kircher2019
+  release: GRCh38
+  n_synthetic: 20
+  element_len: 230
+  effect_reduce: mean
+
+smoke: false
+smoke_overrides:
+  model: { name: toy, max_length: 256, toy_d_model: 64, toy_n_layers: 4 }
+  corpus: { context_len: 256, n_windows: 300 }
+  sae: { expansion: 8, k: 16, batch: 512, epochs: 3, dead_token_window: 50000, k_aux: 64 }
+  causal: { null_R: 200 }
+  satmut: { source: synthetic, n_synthetic: 12, element_len: 120 }

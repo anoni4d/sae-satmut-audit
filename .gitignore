@@ -1,0 +1,41 @@
+# python
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# data & heavy artifacts (regenerated; never commit)
+data_raw/
+cache/
+artifacts/
+artifacts_*/
+*.memmap
+*.parquet
+*.npy
+*.safetensors
+*.fa
+*.fai
+*.fasta
+
+# latex build artifacts (keep .tex + figures + .pdf)
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# notebook outputs (can embed local paths)
+*.nbconvert.ipynb
+
+# os / editor
+.DS_Store
+desktop.ini
+.ipynb_checkpoints/

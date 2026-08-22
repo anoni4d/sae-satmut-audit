@@ -1,0 +1,84 @@
+# Caduceus (second model) run config — the cross-architecture generality test.
+# Caduceus-Ph is a BiMamba (selective-SSM) single-nt model, d_model 256 (same as HyenaDNA-medium,
+# so the SAE config is unchanged), 16 layers. REQUIRES mamba-ssm + causal-conv1d (CUDA kernels) →
+# run on a cloud GPU with a CUDA toolkit; the dev laptop can't build them (see SETUP_CADUCEUS.md).
+# Same corpus + Kircher satmut as the HyenaDNA run, so results are directly comparable.
+#
+# Run (on the cloud box, after setup):
+#   DNA_INTERP_CONFIG=config/caduceus.yaml python scripts/run_pipeline.py n_seeds=3
+#   DNA_INTERP_CONFIG=config/caduceus.yaml python scripts/06_deepdive.py
+#   DNA_INTERP_CONFIG=config/caduceus.yaml python scripts/08_probe.py
+
+seed: 0
+device: cuda
+dtype: float32
+
+paths:
+  # repo-relative paths; point these at wherever your genome FASTA + Kircher tables live
+  data_raw: ./data_raw
+  data_cache: ./cache
+  artifacts: ./artifacts_caduceus
+  reports: reports_caduceus
+
+model:
+  name: kuleshov-group/caduceus-ph_seqlen-131k_d_model-256_n_layer-16
+  backend: caduceus
+  fallback_to_toy: false
+  max_length: 1024
+  toy_d_model: 128
+  toy_n_layers: 4
+
+corpus:
+  context_len: 1024
+  n_windows: 8000           # parity with the HyenaDNA run for a clean comparison
+  class_mix: { ccre: 0.4, genic: 0.3, background: 0.3 }
+  genome_fasta: ./data_raw/hg38.fa
+  ccre_bed: ./data_raw/GRCh38-cCREs.bed
+  gencode_gtf: ./data_raw/gencode_genes.bed
+  synthetic_gc: 0.41
+
+activations:
+  layers: [12]   # 3N/4 of 16, matching HyenaDNA's selection rationale; single layer to bound laptop time               # auto sweep {N/4, N/2, 3N/4} = {4, 8, 12} for the 16-layer model
+  batch_size: 16             # Mamba forward is heavier; reduce if OOM
+  chosen_layer: null
+
+sae:
+  family: topk
+  expansion: 16
+  k: 64
+  k_aux: 256
+  aux_alpha: 0.03125
+  lr: 0.0004
+  batch: 4096
+  epochs: 8
+  ram_max_tokens: 5000000
+  dead_token_window: 10000000
+  density_warn: 0.10
+
+ism:
+  alts: all
+  summary: max
+  batch: 32                  # smaller than HyenaDNA's 64; Mamba ISM is heavier
+
+causal:
+  metric: precision_weighted
+  null_R: 1000
+  percentile: 95
+  min_active_elements: 1
+  match_cos_threshold: 0.5
+
+satmut:
+  source: kircher
+  kircher_dir: ./data_raw/kircher2019
+  release: GRCh38
+  n_synthetic: 20
+  element_len: 230
+  effect_reduce: mean
+
+smoke: false
+smoke_overrides:
+  model: { name: toy, backend: "", max_length: 256, toy_d_model: 64, toy_n_layers: 4 }
+  corpus: { context_len: 256, n_windows: 300 }
+  sae: { expansion: 8, k: 16, batch: 512, epochs: 3, dead_token_window: 50000, k_aux: 64 }
+  causal: { null_R: 200 }
+  satmut: { source: synthetic, n_synthetic: 12, element_len: 120 }

@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dna-interp"
+version = "0.1.0"
+description = "Causal vs correlational features in a genomic foundation model (SAE + satmut)"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "tqdm",
+    "pyyaml",
+    "omegaconf",
+    "einops",
+    "transformers",
+    "datasets",
+    "safetensors",
+    "pyfaidx",
+    "requests",
+]
+
+[project.optional-dependencies]
+# Bioinformatics extras; pipeline degrades gracefully if missing.
+bio = ["pysam", "pybedtools", "MOODS-python", "pyjaspar"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
